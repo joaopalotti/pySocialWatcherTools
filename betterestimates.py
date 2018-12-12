@@ -25,8 +25,8 @@ if len(sys.argv) <= 1:
     sys.exit(1)
 
 infile = sys.argv[1]
-#countries_to_try = ["CR" , "UY", "FR", "JP", "BO", "CL", "PA", "US", "ES"] 
-countries_to_try = ["PA", "US", "ES"] 
+countries_to_try = ["CR" , "UY", "FR", "JP", "BO", "CL", "PA", "US", "ES", "BR", "AR", "PT", "CA", "PE", "EC", "MX", "NI"] 
+#countries_to_try = ["PA", "US", "ES"] 
 #countries_to_try = ["CZ"]
 #countries_to_try = ["US"]
 
@@ -44,6 +44,9 @@ result = None
 def prepare_to_reissue(df):
     df["response"] = None
 
+"""
+TODO: Proably the best way is to copy the dictionary 'row' and return a new object.
+"""
 def replace_by_country(row, country = "BR"):
     for option in ["countries", "regions", "cities", "custom_locations"]:
         if option in row["geo_locations"]:
@@ -170,9 +173,7 @@ else:
 
 # Transform str into JSON -- BAD approach. The set will be later modified and will impact in the original df. Alternatively, I could save it and get it back at the end.
 #df["targeting"] = df["targeting"].apply(lambda x: x))
-
 for country in countries_to_try:
-
     print ("USING COUNTRY: ", country)
     if TACKLE_NAN:
 	df1000 = df[df["mau_audience"].isnull()].copy()
@@ -202,7 +203,7 @@ for country in countries_to_try:
         df1000.loc[df1000["tupled"].apply(lambda x: is_bad_country(x, country)), "exploring"] = False
         df1000.loc[df1000["tupled_country"].apply(lambda x: is_bad_country(x, country)), "exploring"] = False
 	print("After checking cache: %d queries will be made." % (df1000["exploring"].sum()))
-	print("Done!")
+	print("Computing Queries...")
 
     df1000_in_country = df1000.copy(deep=True)
     df1000_add_country = df1000.copy(deep=True)
@@ -218,23 +219,25 @@ for country in countries_to_try:
     df1000_add_country.loc[(df1000_add_country["targeting"].isnull()) | (df1000_in_country["targeting"].isnull()), "exploring"] = False
     df1000_in_country.loc[(df1000_add_country["targeting"].isnull()) | (df1000_in_country["targeting"].isnull()), "exploring"] = False
 
-    # Only going to explore (i.e., issue an API call) those marked for exploration.
-    df1000_in_country.loc[df1000_in_country["exploring"], "response"] = None
-    df1000_add_country.loc[df1000_add_country["exploring"], "response"] = None
-    #prepare_to_reissue(df1000_in_country)
-    #prepare_to_reissue(df1000_add_country)
-    
-    # This is the case in which we do not have any new query to issue. Just continue to the next country
-    if df1000_in_country["response"].isnull().sum() == 0:
-	print("No queries to issue for this country...")
-        continue
-   
-    stophere
+      
     try:
+	# Mark all API calls that are explorable to have response = Null -> this is required by pySocialWatcher.
+    	df1000_add_country.loc[df1000_add_country["exploring"], "response"] = None
+
+	# This is the case in which we do not have any new query to issue. Just continue to the next country
+	if df1000_add_country["response"].isnull().sum() == 0:
+	    print("No queries to issue for this country...")
+            continue
+
         watcherAPI.perform_collection_data_on_facebook(df1000_add_country)
+
+	print "Second part. We should make %d API queries." % (df1000_in_country["exploring"].sum())
 
         # We can save API call by not exploration queries that we are invalid
         df1000_in_country.loc[ (df1000_add_country["mau_audience"] == 1000) | (df1000_add_country["mau_audience"] >= 10000), "exploring"] = False    
+    	df1000_in_country.loc[df1000_in_country["exploring"], "response"] = None
+	
+	print "But, we are actually making %d API queries." % (df1000_in_country["exploring"].sum())
     
         # Explore the remaining queries
         watcherAPI.perform_collection_data_on_facebook(df1000_in_country)
